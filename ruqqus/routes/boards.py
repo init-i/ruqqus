@@ -570,6 +570,20 @@ def mod_bid_settings_private(bid, board, v):
 
     return "",204
 
+@app.route("/mod/<bid>/settings/hidden_from_all", methods=["POST"])
+@auth_required
+@is_guildmaster
+@validate_formkey
+def mod_bid_settings_hidden(bid, board, v):
+
+    # toggle hidden_from_all setting
+    board.hidden_from_all = bool(request.form.get("hidden_from_all", False)=='true')
+
+    g.db.add(board)
+    
+
+    return "",204
+
 @app.route("/mod/<bid>/settings/name", methods=["POST"])
 @auth_required
 @is_guildmaster

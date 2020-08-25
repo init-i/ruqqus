@@ -669,7 +669,8 @@ CREATE TABLE public.boards (
     color_nonce integer DEFAULT 0,
     is_nsfl boolean DEFAULT false,
     rank_trending double precision DEFAULT 0,
-    stored_subscriber_count integer
+    stored_subscriber_count integer,
+    hidden_from_all boolean DEFAULT false
 );
 
 

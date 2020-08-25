@@ -279,6 +279,36 @@
 
         </div>
 
+        <div id="hide_from_all">
+
+          <h2 class="h5">Hide Posts From /all</h2>
+
+          <p class="text-small text-muted">Prevent submissions to +{{ b.name }} from appearing in the trending or new feeds.</p>
+
+          <div class="settings-section rounded">
+
+            <div class="d-lg-flex">
+
+              <div class="title w-lg-25">
+                <label for="hidden_from_all">Hide From All</label>
+              </div>
+
+              <div class="body w-lg-100">
+
+                <div class="custom-control custom-switch">
+                  <input type="checkbox" class="custom-control-input" id="hidden_from_all" name="hidden_from_all"{% if b.hidden_from_all %} checked{% endif %} onchange="mod_post('/mod/{{ b.base36id }}/settings/hidden_from_all','hidden_from_all')">
+                  <label class="custom-control-label" for="hidden_from_all"></label>
+                </div>
+
+				<span class="text-small-extra text-muted">Prevent submissions to +{{ b.name }} from appearing in /all (e.g. the trending and new feeds).</span>
+
+              </div>
+
+            </div>
+
+          </div>
+
+        </div>
   </div>
 
 </div>

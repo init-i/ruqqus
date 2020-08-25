@@ -468,7 +468,7 @@ def submit_post(v):
                         board_id=board.id,
                         original_board_id=board.id,
                         over_18=(bool(request.form.get("over_18","")) or board.over_18),
-                        post_public=not board.is_private,
+                        post_public=(not board.is_private and not board.hidden_from_all),
                         repost_id=repost.id if repost else None,
                         is_offensive=is_offensive
                         )
