@@ -1,6 +1,6 @@
 from urllib.parse import urlparse
 import mistletoe
-from sqlalchemy import func
+from sqlalchemy import func, literal
 from bs4 import BeautifulSoup
 
 from ruqqus.helpers.wrappers import *
@@ -31,7 +31,7 @@ def comment_cid(cid):
 @app.route("/post/<p_id>/<anything>/<c_id>", methods=["GET"])
 @app.route("/api/v1/post/<p_id>/comment/<c_id>", methods=["GET"])
 @auth_desired
-@api
+@api("read")
 def post_pid_comment_cid(p_id, c_id, anything=None, v=None):
 
     comment=get_comment(c_id, v=v)
@@ -64,7 +64,7 @@ def post_pid_comment_cid(p_id, c_id, anything=None, v=None):
 
                 }
 
-    if post.is_nsfl and not (v and v.hide_nsfl) and not session_isnsfl(comment.board):
+    if post.is_nsfl and not (v and v.show_nsfl) and not session_isnsfl(comment.board):
         t=int(time.time())
         return {'html':lambda:render_template("errors/nsfl.html",
                                v=v,
@@ -90,11 +90,12 @@ def post_pid_comment_cid(p_id, c_id, anything=None, v=None):
     post._preloaded_comments=[comment]
 
     #context improver
-    context=min(int(request.args.get("context", 0)), 5)
+    context=min(int(request.args.get("context", 0)), 4)
     c=comment
     while context > 0 and not c.is_top_level:
 
-        parent=c.parent
+        parent=get_comment(c.parent_comment_id, v=v)
+
         post._preloaded_comments+=[parent]
 
         c=parent
@@ -105,12 +106,17 @@ def post_pid_comment_cid(p_id, c_id, anything=None, v=None):
     #children comments
     current_ids=[comment.id]
     for i in range(6-context):
-        if g.v:
-            votes=g.db.query(CommentVote).filter(CommentVote.user_id==g.v.id, CommentVote.comment_id.in_(current_ids)).subquery()
+        if v:
+            votes=g.db.query(CommentVote).filter(CommentVote.user_id==v.id).subquery()
+
+            blocking=v.blocking.subquery()
+            blocked=v.blocked.subquery()
 
             comms=g.db.query(
                 Comment,
-                votes.c.vote_type
+                votes.c.vote_type,
+                blocking.c.id,
+                blocked.c.id
                 ).select_from(Comment).options(
                 joinedload(Comment.author).joinedload(User.title)
                 ).filter(
@@ -118,6 +124,14 @@ def post_pid_comment_cid(p_id, c_id, anything=None, v=None):
                 ).join(
                 votes,
                 votes.c.comment_id==Comment.id,
+                isouter=True
+                ).join(
+                blocking,
+                blocking.c.target_id==Comment.author_id,
+                isouter=True
+                ).join(
+                blocked,
+                blocked.c.user_id==Comment.author_id,
                 isouter=True
                 )
 
@@ -138,10 +152,13 @@ def post_pid_comment_cid(p_id, c_id, anything=None, v=None):
 
             output=[]
             for c in comms:
-                com=c[0]
-                com._voted=c[1] or 0
-                output.append(com)
+                comment=c[0]
+                comment._voted=c[1] or 0
+                comment._is_blocking=c[2] or 0
+                comment._is_blocked=c[3] or 0
+                output.append(comment)
         else:
+
             comms=g.db.query(
                 Comment
                 ).options(
@@ -249,6 +266,26 @@ def api_comment(v):
             break
         else:
             is_offensive=False
+
+    #check badlinks
+    soup=BeautifulSoup(body_html, features="html.parser")
+    links=[x['href'] for x in soup.find_all('a') if x.get('href')]
+
+    for link in links:
+        parse_link=urlparse(link)
+        check_url=ParseResult(scheme="https",
+                            netloc=parse_link.netloc,
+                            path=parse_link.path,
+                            params=parse_link.params,
+                            query=parse_link.query,
+                            fragment='')
+        check_url=urlunparse(check_url)
+
+
+        badlink=g.db.query(BadLink).filter(literal(check_url).contains(BadLink.link)).first()
+
+        if badlink:
+            return jsonify({"error":f"Remove the following link and try again: `{check_url}`. Reason: {badlink.reason_text}"}), 403
         
     #create comment
     c=Comment(author_id=v.id,
@@ -293,7 +330,8 @@ def api_comment(v):
         if user:
             if v.any_block_exists(user):
                 continue
-            notify_users.add(user.id)
+            if user.id != v.id:
+                notify_users.add(user.id)
 
 
     for x in notify_users:
@@ -329,7 +367,7 @@ def api_comment(v):
 @app.route("/edit_comment/<cid>", methods=["POST"])
 @is_not_banned
 @validate_formkey
-#@api
+@api("edit")
 def edit_comment(cid, v):
 
     c = get_comment(cid, v=v)
@@ -384,7 +422,7 @@ def edit_comment(cid, v):
 @app.route("/api/v1/delete/comment/<cid>", methods=["POST"])
 @auth_required
 @validate_formkey
-#@api
+@api("delete")
 def delete_comment(cid, v):
 
     c=g.db.query(Comment).filter_by(id=base36decode(cid)).first()
@@ -402,7 +440,8 @@ def delete_comment(cid, v):
 
     cache.delete_memoized(User.commentlisting, v)
 
-    return "", 204
+    return {"html":lambda:("", 204),
+        "api":lambda:("", 204)}
 
 
 
@@ -410,7 +449,6 @@ def delete_comment(cid, v):
 @app.route("/embed/post/<pid>/comment/<cid>", methods=["GET"])
 @app.route("/api/vi/embed/comment/<cid>", methods=["GET"])
 @app.route("/api/vi/embed/post/<pid>/comment/<cid>", methods=["GET"])
-@api
 def embed_comment_cid(cid, pid=None):
 
     comment=get_comment(cid)

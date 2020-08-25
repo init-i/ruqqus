@@ -74,6 +74,9 @@ class Submission(Base, Stndrd, Age_times, Scores, Fuzzing):
     is_pinned=Column(Boolean, default=False)
     score_best=Column(Float, default=0)
 
+    upvotes = Column(Integer, default=1)
+    downvotes = Column(Integer, default=0)
+
     approved_by=relationship("User", uselist=False, primaryjoin="Submission.is_approved==User.id")
 
     # not sure if we need this
@@ -83,9 +86,9 @@ class Submission(Base, Stndrd, Age_times, Scores, Fuzzing):
     #These are virtual properties handled as postgres functions server-side
     #There is no difference to SQLAlchemy, but they cannot be written to
 
-    #ups = deferred(Column(Integer, server_default=FetchedValue()))
-    #downs=deferred(Column(Integer, server_default=FetchedValue()))
-    age=deferred(Column(Integer, server_default=FetchedValue()))
+    ups = deferred(Column(Integer, server_default=FetchedValue()))
+    downs=deferred(Column(Integer, server_default=FetchedValue()))
+    #age=deferred(Column(Integer, server_default=FetchedValue()))
     comment_count=Column(Integer, server_default=FetchedValue())
     flag_count=deferred(Column(Integer, server_default=FetchedValue()))
     report_count=deferred(Column(Integer, server_default=FetchedValue()))
@@ -189,7 +192,8 @@ class Submission(Base, Stndrd, Age_times, Scores, Fuzzing):
                                linked_comment=comment,
                                comment_info=comment_info,
                                is_allowed_to_comment=is_allowed_to_comment,
-                               render_replies=True
+                               render_replies=True,
+                               is_guildmaster=self.board.has_mod(v)
                                )
 
 
@@ -305,6 +309,7 @@ class Submission(Base, Stndrd, Age_times, Scores, Fuzzing):
                 'is_deleted':False,
                 'created_utc':self.created_utc,
                 'id':self.base36id,
+                'fullname':self.fullname,
                 'title':self.title,
                 'is_nsfw':self.over_18,
                 'is_offensive':self.is_offensive,
@@ -321,7 +326,11 @@ class Submission(Base, Stndrd, Age_times, Scores, Fuzzing):
                 'embed_url':self.embed_url,
                 'is_archived':self.is_archived,
                 'author_title':self.author.title.json if self.author.title else None,
-                'original_guild_name':self.original_board.name
+                'original_guild_name':self.original_board.name,
+                'comment_count':self.comment_count,
+                'score':self.score_fuzzed,
+                'upvotes':self.upvotes_fuzzed,
+                'downvotes':self.downvotes_fuzzed
                 }
 
         if "_voted" in self.__dict__:
@@ -390,3 +399,26 @@ class Submission(Base, Stndrd, Age_times, Scores, Fuzzing):
     def embed_url(self, x):
         self.submission_aux.embed_url=x
         g.db.add(self.submission_aux)
+
+    @property
+    def is_guildmaster(self):
+        return self.__dict__.get('_is_guildmaster', False)
+
+    @property
+    def is_blocking_guild(self):
+        return self.__dict__.get('_is_blocking_guild', False)
+
+    @property
+    def is_blocked(self):
+        return self.__dict__.get('_is_blocked', False)
+
+    @property
+    def is_blocking(self):
+        return self.__dict__.get('_is_blocking', False)
+
+    @property
+    def is_subscribed(self):
+        return self.__dict__.get('_is_subscribed', False)
+    
+    
+    
